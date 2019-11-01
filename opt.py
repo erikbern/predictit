@@ -13,6 +13,7 @@ los, his = [], []
 yps, nps = [], []
 yqs, nqs = [], []
 contracts = []
+case = 'neg-binomial'
 for c in res.json():
     name = c['contractName']
     contracts.append(name)
@@ -24,7 +25,12 @@ for c in res.json():
         name = name.replace(' or more', '') + ' - 999999'
     elif name.endswith('or higher'):
         name = name.replace(' or higher', '') + ' - 100%'
-    lo, hi = map(lambda z: float(z.strip('%')), name.split(' - '))
+    if ' - ' in name:
+        lo, hi = map(lambda z: float(z.strip('%')), name.split(' - '))
+    else:
+        lo = hi = int(name)
+    if name.endswith('%'):
+        case = 'beta'
     coalesce = lambda z, d: z if z is not None else d
     los.append(lo)
     his.append(hi)
@@ -33,7 +39,7 @@ for c in res.json():
     yqs.append(coalesce(c['bestYesQuantity'], 0))
     nqs.append(coalesce(c['bestNoQuantity'], 0))
 
-if all(int(z) == z for z in los) and all(int(z) == z for z in his):
+if case == 'neg-binomial':
     # It's a bunch of integers: let's model as a negative binomial distribution
     los, his, yps, nps, yqs, nqs = (numpy.array(z) for z in (los, his, yps, nps, yqs, nqs))
 
@@ -41,7 +47,7 @@ if all(int(z) == z for z in los) and all(int(z) == z for z in his):
 
     cdf = lambda x, z: scipy.stats.nbinom.cdf(x, *z)
     get_probs = lambda z: cdf(his, z) - cdf(numpy.maximum(los-1, 0), z)
-    get_range = lambda z: list(range(int(scipy.stats.nbinom.ppf(0.99, *z))))
+    get_range = lambda z: list(range(int(scipy.stats.nbinom.ppf(0.999, *z))))
     plot_pdf = lambda z: (get_range(z), scipy.stats.nbinom.pmf(get_range(z), *z))
 else:
     # It's a percentage: let's model it as a Beta distribution
@@ -57,7 +63,7 @@ else:
 
     cdf = lambda x, z: scipy.stats.beta.cdf(x, *z)
     get_probs = lambda z: cdf(his, z) - cdf(los, z)
-    get_range = lambda z: numpy.linspace(scipy.stats.beta.ppf(0.01, *z), scipy.stats.beta.ppf(0.99, *z), 1000)
+    get_range = lambda z: numpy.linspace(scipy.stats.beta.ppf(0.001, *z), scipy.stats.beta.ppf(0.999, *z), 1000)
     plot_pdf = lambda z: (get_range(z), scipy.stats.beta.pdf(get_range(z), *z))
 
 #####################
