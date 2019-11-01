@@ -28,12 +28,12 @@ for c in res.json():
     coalesce = lambda z, d: z if z is not None else d
     los.append(lo)
     his.append(hi)
-    yps.append(coalesce(c['bestYesPrice'], 0))
+    yps.append(coalesce(c['bestYesPrice'], 1))
     nps.append(coalesce(c['bestNoPrice'], 1))
     yqs.append(coalesce(c['bestYesQuantity'], 0))
     nqs.append(coalesce(c['bestNoQuantity'], 0))
 
-if all(int(z) == z for z in los):
+if all(int(z) == z for z in los) and all(int(z) == z for z in his):
     # It's a bunch of integers: let's model as a negative binomial distribution
     los, his, yps, nps, yqs, nqs = (numpy.array(z) for z in (los, his, yps, nps, yqs, nqs))
 
@@ -64,37 +64,41 @@ else:
         return scipy.stats.beta.cdf(x, a, b)
 
     get_probs = lambda z: cdf(his, z) - cdf(los, z)
-    plot_pdf = lambda z: (numpy.linspace(0, 1), scipy.stats.beta.pdf(numpy.linspace(0, 1), *z))
+    get_range = lambda: numpy.linspace(max(0, his[0]*0.8), min(1, los[-1]*1.2), 1000)
+    plot_pdf = lambda z: (get_range(), scipy.stats.beta.pdf(get_range(), *z))
 
 #####################
 
-def loss(z, p=False):
+def margin(w):
+    # Kind of relu, if no contracts are in the money then maximize margin instead
+    return numpy.maximum(w, w*1e-3)
+
+def loss(z):
     ps = get_probs(z)
-    y_loss = numpy.maximum((ps - yps)*yqs, 0)
-    n_loss = numpy.maximum(((1-ps) - nps)*nqs, 0)
+    y_loss = margin((ps - yps)*yqs)
+    n_loss = margin(((1-ps) - nps)*nqs)
     l = numpy.sum(y_loss + n_loss)
-    if p:
-        print('loss:', l)
-        print(y_loss)
-        print(n_loss)
-        for contract, p in zip(contracts, ps):
-            print('%20s %.4f' % (contract, p))
-        tips = []
-        for gains, prices, worths, side in [(ps-yps, yps, ps, 'yes'), ((1-ps)-nps, nps, 1-ps, 'no')]:
-            for gain, price, worth, contract in zip(gains, prices, worths, contracts):
-                if gain > 0:
-                    tips.append((gain, contract, side, price, worth))
-        tips.sort(reverse=True)
-        for gain, contract, side, price, worth in tips:
-            print('%.4f: buy %20s %3s @ %.2f worth %.4f' % (gain, contract, side, price, worth))
     return l
+
+def print_loss(z):
+    ps = get_probs(z)
+    for contract, p in zip(contracts, ps):
+        print('%20s %.4f' % (contract, p))
+    tips = []
+    for gains, prices, worths, side in [(ps-yps, yps, ps, 'yes'), ((1-ps)-nps, nps, 1-ps, 'no')]:
+        for gain, price, worth, contract in zip(gains, prices, worths, contracts):
+            if gain > 0:
+                tips.append((gain, contract, side, price, worth))
+    tips.sort(reverse=True)
+    for gain, contract, side, price, worth in tips:
+        print('%.4f: buy %20s %3s @ %.2f worth %.4f' % (gain, contract, side, price, worth))
 
 # Grid search to find solution
 s = min(grid, key=loss)
 print('Grid min loss:', s, '->', loss(s))
 # s = scipy.optimize.minimize(loss, x0=s).x
 # print('Fine tuned loss:', s, '->', loss(s))
-loss(s, True)
+print_loss(s)
 xs, ys = plot_pdf(s)
 pyplot.plot(xs, ys)
 pyplot.grid(True)
