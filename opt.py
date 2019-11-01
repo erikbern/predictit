@@ -41,7 +41,7 @@ if all(int(z) == z for z in los) and all(int(z) == z for z in his):
 
     cdf = lambda x, z: scipy.stats.nbinom.cdf(x, *z)
     get_probs = lambda z: cdf(his, z) - cdf(numpy.maximum(los-1, 0), z)
-    get_range = lambda z: list(range(scipy.stats.nbinom.ppf(0.99, *z)))
+    get_range = lambda z: list(range(int(scipy.stats.nbinom.ppf(0.99, *z))))
     plot_pdf = lambda z: (get_range(z), scipy.stats.nbinom.pmf(get_range(z), *z))
 else:
     # It's a percentage: let's model it as a Beta distribution
