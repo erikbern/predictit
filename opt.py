@@ -39,13 +39,10 @@ if all(int(z) == z for z in los) and all(int(z) == z for z in his):
 
     grid = [(n, p) for n in numpy.exp(numpy.linspace(0, 12, 1000)) for p in numpy.linspace(0, 1, 100)]
 
-    def cdf(x, z):
-        n, p = z
-        return scipy.stats.nbinom.cdf(x, n, p)
-
+    cdf = lambda x, z: scipy.stats.nbinom.cdf(x, *z)
     get_probs = lambda z: cdf(his, z) - cdf(numpy.maximum(los-1, 0), z)
-    get_range = lambda: list(range(int(max(los)*1.5)))
-    plot_pdf = lambda z: (get_range(), scipy.stats.nbinom.pmf(get_range(), *z))
+    get_range = lambda z: list(range(scipy.stats.nbinom.ppf(0.99, *z)))
+    plot_pdf = lambda z: (get_range(z), scipy.stats.nbinom.pmf(get_range(z), *z))
 else:
     # It's a percentage: let's model it as a Beta distribution
 
@@ -57,15 +54,11 @@ else:
     # Generate a grid to search on
     g = numpy.exp(numpy.linspace(0, 12, 1000))
     grid = [(p, q) for p in g for q in g if his[0]*0.7 <= p/(p+q) <= los[-1]*1.4]
-    print('checking', len(grid), 'params')
 
-    def cdf(x, z):
-        a, b = z
-        return scipy.stats.beta.cdf(x, a, b)
-
+    cdf = lambda x, z: scipy.stats.beta.cdf(x, *z)
     get_probs = lambda z: cdf(his, z) - cdf(los, z)
-    get_range = lambda: numpy.linspace(max(0, his[0]*0.8), min(1, los[-1]*1.2), 1000)
-    plot_pdf = lambda z: (get_range(), scipy.stats.beta.pdf(get_range(), *z))
+    get_range = lambda z: numpy.linspace(scipy.stats.beta.ppf(0.01, *z), scipy.stats.beta.ppf(0.99, *z), 1000)
+    plot_pdf = lambda z: (get_range(z), scipy.stats.beta.pdf(get_range(z), *z))
 
 #####################
 
@@ -93,13 +86,13 @@ def print_loss(z):
     for gain, contract, side, price, worth in tips:
         print('%.4f: buy %20s %3s @ %.2f worth %.4f' % (gain, contract, side, price, worth))
 
-# Grid search to find solution
-s = min(grid, key=loss)
-print('Grid min loss:', s, '->', loss(s))
-# s = scipy.optimize.minimize(loss, x0=s).x
-# print('Fine tuned loss:', s, '->', loss(s))
-print_loss(s)
-xs, ys = plot_pdf(s)
+print('Grid searching', len(grid), 'combinations')
+z = min(grid, key=loss)
+print('Grid min loss:', z, '->', loss(z))
+# z = scipy.optimize.minimize(loss, x0=s).x
+# print('Fine tuned loss:', z, '->', loss(z))
+print_loss(z)
+xs, ys = plot_pdf(z)
 pyplot.plot(xs, ys)
 pyplot.grid(True)
 pyplot.show()
