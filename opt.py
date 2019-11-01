@@ -78,13 +78,16 @@ def print_loss(z):
     for contract, p in zip(contracts, ps):
         print('%20s %.4f' % (contract, p))
     tips = []
-    for gains, prices, worths, side in [(ps-yps, yps, ps, 'yes'), ((1-ps)-nps, nps, 1-ps, 'no')]:
-        for gain, price, worth, contract in zip(gains, prices, worths, contracts):
-            if gain > 0:
-                tips.append((gain, contract, side, price, worth))
+    options = [(yps, ps, 'yes'),
+               (nps, 1-ps, 'no'),
+               (1-nps+0.01, ps, 'yes (limit)'),
+               (1-yps+0.01, 1-ps, 'no (limit)')]
+    for prices, worths, side in options:
+        for price, worth, contract in zip(prices, worths, contracts):
+            tips.append((worth/price, contract, side, price, worth))
     tips.sort(reverse=True)
     for gain, contract, side, price, worth in tips:
-        print('%.4f: buy %20s %3s @ %.2f worth %.4f' % (gain, contract, side, price, worth))
+        print('%+9.2f%%: buy %30s @ %.2f worth %.4f' % ((gain-1)*100, contract + ' ' + side, price, worth))
 
 print('Grid searching', len(grid), 'combinations')
 z = min(grid, key=loss)
