@@ -22,7 +22,7 @@ for c in res.json():
     if name.endswith('or lower'):
         name = '0 - ' + name.replace(' or lower', '')
     elif name.endswith('or more'):
-        name = name.replace(' or more', '') + ' - 999999'
+        name = name.replace(' or more', '') + ' - inf'
     elif name.endswith('or higher'):
         name = name.replace(' or higher', '') + ' - 100%'
     if ' - ' in name:
@@ -42,13 +42,12 @@ for c in res.json():
 if case == 'neg-binomial':
     # It's a bunch of integers: let's model as a negative binomial distribution
     los, his, yps, nps, yqs, nqs = (numpy.array(z) for z in (los, his, yps, nps, yqs, nqs))
-
-    grid = [(n, p) for n in numpy.exp(numpy.linspace(0, 12, 1000)) for p in numpy.linspace(0, 1, 100)]
-
+    grid = [(n, p) for n in numpy.exp(numpy.linspace(0, 12, 300)) for p in numpy.linspace(0, 1, 300)]
     cdf = lambda x, z: scipy.stats.nbinom.cdf(x, *z)
-    get_probs = lambda z: cdf(his, z) - cdf(numpy.maximum(los-1, 0), z)
+    get_probs = lambda z: cdf(his, z) - cdf(los-1, z)
     get_range = lambda z: list(range(int(scipy.stats.nbinom.ppf(0.999, *z))))
     plot_pdf = lambda z: (get_range(z), scipy.stats.nbinom.pmf(get_range(z), *z))
+    # transform = lambda w: (numpy.exp(w[0]), 1.0 / (1 + numpy.exp(-w[1])))
 else:
     # It's a percentage: let's model it as a Beta distribution
 
@@ -56,15 +55,13 @@ else:
     los2 = [(hi_prev + lo_cur)/200 for lo_cur, hi_prev in zip(los, [0] + his[:-1])]
     his2 = [(hi_cur + lo_next)/200 for hi_cur, lo_next in zip(his, los[1:] + [1])]
     los, his, yps, nps, yqs, nqs = (numpy.array(z) for z in (los2, his2, yps, nps, yqs, nqs))
-
-    # Generate a grid to search on
-    g = numpy.exp(numpy.linspace(0, 12, 1000))
-    grid = [(p, q) for p in g for q in g if his[0]*0.7 <= p/(p+q) <= los[-1]*1.4]
-
+    g = numpy.exp(numpy.linspace(0, 12, 300))
+    grid = [(p, q) for p in g for q in g]
     cdf = lambda x, z: scipy.stats.beta.cdf(x, *z)
     get_probs = lambda z: cdf(his, z) - cdf(los, z)
     get_range = lambda z: numpy.linspace(scipy.stats.beta.ppf(0.001, *z), scipy.stats.beta.ppf(0.999, *z), 1000)
     plot_pdf = lambda z: (get_range(z), scipy.stats.beta.pdf(get_range(z), *z))
+    # transform = lambda w: numpy.exp(w)
 
 #####################
 
@@ -98,8 +95,6 @@ def print_loss(z):
 print('Grid searching', len(grid), 'combinations')
 z = min(grid, key=loss)
 print('Grid min loss:', z, '->', loss(z))
-# z = scipy.optimize.minimize(loss, x0=s).x
-# print('Fine tuned loss:', z, '->', loss(z))
 print_loss(z)
 xs, ys = plot_pdf(z)
 pyplot.plot(xs, ys)
