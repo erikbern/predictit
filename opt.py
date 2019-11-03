@@ -39,10 +39,21 @@ for c in res.json():
     yqs.append(coalesce(c['bestYesQuantity'], 0))
     nqs.append(coalesce(c['bestNoQuantity'], 0))
 
+if case == 'beta':
+    # First, replace every limit by the midpoints
+    los2 = [(hi_prev + lo_cur)/200 for lo_cur, hi_prev in zip(los, [0] + his[:-1])]
+    his2 = [(hi_cur + lo_next)/200 for hi_cur, lo_next in zip(his, los[1:] + [1])]
+    los, his = los2, his2
+
+los, his, yps, nps, yqs, nqs = (numpy.array(z) for z in (los2, his2, yps, nps, yqs, nqs))
+grid_range_a, grid_range_b = 2*his[0]-los[-1], 2*los[-1]-his[0]
+print('Constraining grid search to %.2f-%.2f' % (grid_range_a, grid_range_b))
+
 if case == 'neg-binomial':
     # It's a bunch of integers: let's model as a negative binomial distribution
     los, his, yps, nps, yqs, nqs = (numpy.array(z) for z in (los, his, yps, nps, yqs, nqs))
-    grid = [(n, p) for n in numpy.exp(numpy.linspace(0, 12, 300)) for p in numpy.linspace(0, 1, 300)]
+    grid = [(n, p) for n in numpy.exp(numpy.linspace(0, 12, 2000)) for p in numpy.linspace(0, 1, 2000)
+            if grid_range_a <= p*n/(1-p) <= grid_range_b]
     cdf = lambda x, z: scipy.stats.nbinom.cdf(x, *z)
     get_probs = lambda z: cdf(his, z) - cdf(los-1, z)
     get_range = lambda z: list(range(int(scipy.stats.nbinom.ppf(0.999, *z))))
@@ -50,13 +61,9 @@ if case == 'neg-binomial':
     # transform = lambda w: (numpy.exp(w[0]), 1.0 / (1 + numpy.exp(-w[1])))
 else:
     # It's a percentage: let's model it as a Beta distribution
-
-    # First, replace every limit by the midpoints
-    los2 = [(hi_prev + lo_cur)/200 for lo_cur, hi_prev in zip(los, [0] + his[:-1])]
-    his2 = [(hi_cur + lo_next)/200 for hi_cur, lo_next in zip(his, los[1:] + [1])]
-    los, his, yps, nps, yqs, nqs = (numpy.array(z) for z in (los2, his2, yps, nps, yqs, nqs))
-    g = numpy.exp(numpy.linspace(0, 12, 300))
-    grid = [(p, q) for p in g for q in g]
+    g = numpy.exp(numpy.linspace(0, 12, 2000))
+    grid = [(p, q) for p in g for q in g
+            if grid_range_a <= p/(p+q) <= grid_range_b]
     cdf = lambda x, z: scipy.stats.beta.cdf(x, *z)
     get_probs = lambda z: cdf(his, z) - cdf(los, z)
     get_range = lambda z: numpy.linspace(scipy.stats.beta.ppf(0.001, *z), scipy.stats.beta.ppf(0.999, *z), 1000)
