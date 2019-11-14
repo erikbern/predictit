@@ -45,19 +45,20 @@ if case == 'beta':
     his2 = [(hi_cur + lo_next)/200 for hi_cur, lo_next in zip(his, los[1:] + [1])]
     los, his = los2, his2
 
-los, his, yps, nps, yqs, nqs = (numpy.array(z) for z in (los2, his2, yps, nps, yqs, nqs))
+los, his, yps, nps, yqs, nqs = (numpy.array(z) for z in (los, his, yps, nps, yqs, nqs))
 grid_range_a, grid_range_b = 2*his[0]-los[-1], 2*los[-1]-his[0]
 print('Constraining grid search to %.2f-%.2f' % (grid_range_a, grid_range_b))
 
 if case == 'neg-binomial':
     # It's a bunch of integers: let's model as a negative binomial distribution
-    los, his, yps, nps, yqs, nqs = (numpy.array(z) for z in (los, his, yps, nps, yqs, nqs))
-    grid = [(n, p) for n in numpy.exp(numpy.linspace(0, 12, 2000)) for p in numpy.linspace(0, 1, 2000)
-            if grid_range_a <= p*n/(1-p) <= grid_range_b]
-    cdf = lambda x, z: scipy.stats.nbinom.cdf(x, *z)
+    ns = sorted(set(map(int, numpy.exp(numpy.linspace(0, 12, 1000)))))
+    ps = numpy.linspace(0, 1, 1000)
+    grid = [(n, p) for n in ns for p in ps]
+    # if grid_range_a <= p*n/(1-p) <= grid_range_b]
+    cdf = lambda x, z: scipy.stats.nbinom.cdf(x-z[0], z[0], z[1])
     get_probs = lambda z: cdf(his, z) - cdf(los-1, z)
-    get_range = lambda z: list(range(int(scipy.stats.nbinom.ppf(0.999, *z))))
-    plot_pdf = lambda z: (get_range(z), scipy.stats.nbinom.pmf(get_range(z), *z))
+    get_range = lambda z: list(range(int(scipy.stats.nbinom.ppf(0.999, z[0], z[1])) + z[0]))
+    plot_pdf = lambda z: (get_range(z), scipy.stats.nbinom.pmf(numpy.array(get_range(z)) - z[0], z[0], z[1]))
     # transform = lambda w: (numpy.exp(w[0]), 1.0 / (1 + numpy.exp(-w[1])))
 else:
     # It's a percentage: let's model it as a Beta distribution
