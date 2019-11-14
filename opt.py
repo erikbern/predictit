@@ -1,5 +1,6 @@
 from matplotlib import pyplot
 import numpy
+import random
 import re
 import requests
 import scipy.optimize
@@ -102,8 +103,14 @@ def print_loss(z):
         print('%+9.2f%%: buy %30s @ %.2f worth %.4f' % (gain*100, contract + ' ' + side, price, worth))
 
 print('Grid searching', len(grid), 'combinations')
-z = min(grid, key=loss)
-print('Grid min loss:', z, '->', loss(z))
+best_z, best_score = None, float('inf')
+random.shuffle(grid)
+for i, z in enumerate(grid):
+    score = loss(z)
+    if score < best_score:
+        print(i, z, score)
+        best_z, best_score = z, score
+z = best_z
 print_loss(z)
 xs, ys = plot_pdf(z)
 pyplot.plot(xs, ys)
