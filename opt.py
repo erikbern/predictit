@@ -18,14 +18,18 @@ case = 'neg-binomial'
 for c in res.json():
     name = c['contractName']
     contracts.append(name)
-    if name.endswith('or fewer'):
+    if name.startswith('Less than '):
+        name = '0 - ' + name.replace('Less than ', '')
+    elif name.endswith('or fewer'):
         name = '0 - ' + name.replace(' or fewer', '')
-    if name.endswith('or lower'):
+    elif name.endswith('or lower'):
         name = '0 - ' + name.replace(' or lower', '')
     elif name.endswith('or more'):
         name = name.replace(' or more', '') + ' - inf'
     elif name.endswith('or higher'):
         name = name.replace(' or higher', '') + ' - 100%'
+    if ' to ' in name:
+        name = name.replace(' to ', ' - ')
     if ' - ' in name:
         lo, hi = map(lambda z: float(z.strip('%')), name.split(' - '))
     else:
