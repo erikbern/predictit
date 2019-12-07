@@ -10,17 +10,25 @@ import sys
 
 id = int(re.search('/(\d+)', sys.argv[1]).group(1))
 
-session = requests.Session()
-credentials = json.load(open('credentials.json'))
-res = session.get('https://www.predictit.org/dashboard')
-res.raise_for_status()
-res = session.post('https://www.predictit.org/api/Account/token',
-                   data={'grant_type': 'password', 'rememberMe': 'true', **credentials})
-res.raise_for_status()
-access_token = res.json()['access_token']
-res = session.get('https://www.predictit.org/api/Market/%d/Contracts' % id,
-                  headers={'Authorization': 'Bearer %s' % access_token})
-res.raise_for_status()
+class PredictItScraper:
+    def __init__(self):
+        self.session = requests.Session()
+        credentials = json.load(open('credentials.json'))
+        res = self.session.post('https://www.predictit.org/api/Account/token',
+                                data={'grant_type': 'password', 'rememberMe': 'true', **credentials})
+        res.raise_for_status()
+        self.access_token = res.json()['access_token']
+
+    def get(self, path):
+        res = self.session.get('https://www.predictit.org' + path, 
+                               headers={'Authorization': 'Bearer %s' % self.access_token})
+        res.raise_for_status()
+        return res.json()
+
+predict_it = PredictItScraper()
+balance = predict_it.get('/api/User/Wallet/Balance')['accountBalanceDecimal']
+print('Current balance: %.2f' % balance)
+contract_data = predict_it.get('/api/Market/%d/Contracts' % id)
 
 los, his = [], []
 yps, nps = [], []
@@ -28,7 +36,7 @@ yqs, nqs = [], []
 yus, nus = [], []
 contracts = []
 case = 'neg-binomial'
-for c in res.json():
+for c in contract_data:
     name = c['contractName']
     contracts.append(name)
     if name.startswith('Less than '):
@@ -110,6 +118,7 @@ def utility(z, ybs, nbs, new_balance):
     total_no = sum(nus) + sum(nbs)
     total_log_utility = 0.0
     # TODO: add transaction costs
+    # payoff = 1.0 - 0.1 * (1 - price)
     # new_balance = balance - numpy.dot(yps_limit, ybs) - numpy.dot(nps_limit, nbs)
     payouts = new_balance + (total_no - nus - nbs) + yus + ybs
     return numpy.dot(probs, numpy.log(payouts))
@@ -131,7 +140,7 @@ random.shuffle(grid)
 for i, z in enumerate(grid):
     score = loss(z)
     if score < best_score:
-        print(i, z, score)
+        print('%6d %40s -> %9.4f' % (i, z, score))
         best_z, best_score = z, score
 z = best_z
 
@@ -140,21 +149,24 @@ z = best_z
 for contract, p in zip(contracts, get_probs(z)):
     print('%20s %.4f' % (contract, p))
 
+hurdle_rate_buy, hurdle_rate_sell = 0.10, 0.05  # simple thing to take into account transaction & opportunity costs
 for contract, bs, yu, nu, yp, np in zip(contracts, numpy.eye(yus.shape[0]), yus, nus, yps, nps):
     best_utility, best_side, best_quantity, best_price, best_action = 0, 0, 0, 0, None
     if yu > 0:  # buy more yes, or sell yes
-        options = [('buy', 'yes', q, bs*q, bs*0, 1-np+0.01) for q in range(100)] + \
-            [('sell', 'yes', q, bs*-q, bs*0, -(yp-0.01)) for q in range(1, yu+1)]
+        options = [('buy', 'yes', q, bs*q, bs*0, 1-np+0.01, hurdle_rate_buy) for q in range(100)] + \
+            [('sell', 'yes', q, bs*-q, bs*0, -(yp-0.01), hurdle_rate_sell) for q in range(1, yu+1)]
     elif nu > 0:
-        options = [('buy', 'no', q, bs*0, bs*q, 1-yp+0.01) for q in range(100)] + \
-            [('sell', 'no', q, bs*0, bs*-q, -(np-0.01)) for q in range(1, nu+1)]
+        options = [('buy', 'no', q, bs*0, bs*q, 1-yp+0.01, hurdle_rate_buy) for q in range(100)] + \
+            [('sell', 'no', q, bs*0, bs*-q, -(np-0.01), hurdle_rate_sell) for q in range(1, nu+1)]
     else:
-        options = [('buy', 'yes', q, bs*q, bs*0, 1-np+0.01) for q in range(1000)] + \
-            [('buy', 'no', q, bs*0, bs*q, 1-yp+0.01) for q in range(1000)]
-    for action, side, quantity, ybs, nbs, price in options:
-        new_balance = 10 - quantity*price
+        options = [('buy', 'yes', q, bs*q, bs*0, 1-np+0.01, hurdle_rate_buy) for q in range(100)] + \
+            [('buy', 'no', q, bs*0, bs*q, 1-yp+0.01, hurdle_rate_buy) for q in range(100)]
+    for action, side, quantity, ybs, nbs, price, hurdle_rate in options:
+        new_balance = balance - quantity*price
+        if new_balance < 0:
+            continue
+        new_balance *= 1 + hurdle_rate
         new_utility = utility(z, ybs, nbs, new_balance)
-        # print(action, side, quantity, '@', price, '->', new_utility)
         if new_utility > best_utility:
             best_utility, best_side, best_quantity, best_price, best_action = new_utility, side, quantity, price, action
     if best_quantity > 0:
