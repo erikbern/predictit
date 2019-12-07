@@ -8,7 +8,7 @@ import scipy.optimize
 import scipy.stats
 import sys
 
-id = int(re.search('/(\d+)', sys.argv[1]).group(1))
+id = int(re.search(r'/(\d+)', sys.argv[1]).group(1))
 
 class PredictItScraper:
     def __init__(self):
@@ -28,6 +28,22 @@ class PredictItScraper:
 predict_it = PredictItScraper()
 balance = predict_it.get('/api/User/Wallet/Balance')['accountBalanceDecimal']
 print('Current balance: %.2f' % balance)
+
+# Check if it's a market for number of tweets
+neg_binom_base = 0
+rule = predict_it.get('/api/Market/%d' % id)['rule']
+m = re.search(r'Twitter account @(\w+), shall exceed ([\d,]+) ', rule)
+if m:
+    handle = m.group(1)
+    baseline = int(m.group(2).replace(',', ''))
+    import twitter
+
+    keys = json.load(open('twitter.json'))
+    api = twitter.Api(**keys)
+    user = api.GetUser(screen_name=handle)
+    neg_binom_base = user.statuses_count - baseline
+    print('Setting the negative binomial base to', user.statuses_count, '-', baseline, '=', neg_binom_base)
+
 contract_data = predict_it.get('/api/Market/%d/Contracts' % id)
 
 los, his = [], []
@@ -84,10 +100,10 @@ if case == 'neg-binomial':
     grid = [(n, p) for n in ns for p in ps]
 
     # if grid_range_a <= p*n/(1-p) <= grid_range_b]
-    cdf = lambda x, z: scipy.stats.nbinom.cdf(x-z[0], z[0], z[1])
+    cdf = lambda x, z: scipy.stats.nbinom.cdf(x-neg_binom_base, z[0], z[1])
     get_probs = lambda z: cdf(his, z) - cdf(los-1, z)
-    get_range = lambda z: list(range(int(scipy.stats.nbinom.ppf(0.999, z[0], z[1])) + z[0]))
-    plot_pdf = lambda z: (get_range(z), scipy.stats.nbinom.pmf(numpy.array(get_range(z)) - z[0], z[0], z[1]))
+    get_range = lambda z: list(range(int(scipy.stats.nbinom.ppf(0.999, z[0], z[1])) + neg_binom_base))
+    plot_pdf = lambda z: (get_range(z), scipy.stats.nbinom.pmf(numpy.array(get_range(z)) - neg_binom_base, z[0], z[1]))
     # transform = lambda w: (numpy.exp(w[0]), 1.0 / (1 + numpy.exp(-w[1])))
 else:
     # It's a percentage: let's model it as a Beta distribution
