@@ -3,34 +3,24 @@ import json
 import numpy
 import random
 import re
-import requests
 import scipy.optimize
 import scipy.stats
 import sys
+from .lib import PredictItScraper
 
 id = int(re.search(r'/(\d+)', sys.argv[1]).group(1))
 
-class PredictItScraper:
-    def __init__(self):
-        self.session = requests.Session()
-        credentials = json.load(open('credentials.json'))
-        res = self.session.post('https://www.predictit.org/api/Account/token',
-                                data={'grant_type': 'password', 'rememberMe': 'true', **credentials})
-        res.raise_for_status()
-        self.access_token = res.json()['access_token']
-
-    def get(self, path):
-        res = self.session.get('https://www.predictit.org' + path, 
-                               headers={'Authorization': 'Bearer %s' % self.access_token})
-        res.raise_for_status()
-        return res.json()
-
 predict_it = PredictItScraper()
+predict_it.login()
 balance = predict_it.get('/api/User/Wallet/Balance')['accountBalanceDecimal']
 print('Current balance: %.2f' % balance)
 
+if len(sys.argv) >= 3:
+    neg_binom_base = int(sys.argv[2])
+else:
+    neg_binom_base = 0
+
 # Check if it's a market for number of tweets
-neg_binom_base = 0
 rule = predict_it.get('/api/Market/%d' % id)['rule']
 m = re.search(r'Twitter account @(\w+), shall exceed ([\d,]+) ', rule)
 if m:
@@ -188,7 +178,7 @@ for contract, bs, yu, nu, yp, np in zip(contracts, numpy.eye(yus.shape[0]), yus,
     if best_quantity > 0:
         print('%20s %4s @ %+.2f %6d %3s -> %6.4f' % (contract, best_action, best_price, best_quantity, best_side, best_utility))
 
-#xs, ys = plot_pdf(z)
-#pyplot.plot(xs, ys)
-#pyplot.grid(True)
-#pyplot.show()
+xs, ys = plot_pdf(z)
+pyplot.plot(xs, ys)
+pyplot.grid(True)
+pyplot.savefig('distribution.png')
