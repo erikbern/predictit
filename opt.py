@@ -6,7 +6,7 @@ import re
 import scipy.optimize
 import scipy.stats
 import sys
-from .lib import PredictItScraper
+from lib import PredictItScraper
 
 id = int(re.search(r'/(\d+)', sys.argv[1]).group(1))
 
@@ -14,6 +14,7 @@ predict_it = PredictItScraper()
 predict_it.login()
 balance = predict_it.get('/api/User/Wallet/Balance')['accountBalanceDecimal']
 print('Current balance: %.2f' % balance)
+balance = min(balance, 5)  # Max $5 bet on each
 
 if len(sys.argv) >= 3:
     neg_binom_base = int(sys.argv[2])
@@ -45,24 +46,22 @@ case = 'neg-binomial'
 for c in contract_data:
     name = c['contractName']
     contracts.append(name)
-    if name.startswith('Less than '):
-        name = '0 - ' + name.replace('Less than ', '')
-    elif name.endswith('or fewer'):
-        name = '0 - ' + name.replace(' or fewer', '')
-    elif name.endswith('or lower'):
-        name = '0 - ' + name.replace(' or lower', '')
-    elif name.endswith('or more'):
-        name = name.replace(' or more', '') + ' - inf'
-    elif name.endswith('or higher'):
-        name = name.replace(' or higher', '') + ' - 100%'
-    if ' to ' in name:
-        name = name.replace(' to ', ' - ')
-    if ' - ' in name:
-        lo, hi = map(lambda z: float(z.strip('%')), name.split(' - '))
+    name = re.sub('([.0-9]*) mil(lion)?', lambda m: str(int(float(m.group(1))*1e3)), name)
+    for substr in ['Under ', 'Less than ', ' or less', ' or fewer', ' or lower', 'Fewer than ']:
+        if substr in name:
+            name = '0 - ' + name.replace(substr, '')
+    for substr in [' or more', ' or higher']:
+        if substr in name:
+            name = name.replace(substr, '') + ' - inf'
+    for substr in [' to ', ' or ', ' - ']:
+        if substr in name:
+            lo, hi = name.split(substr)
+            break
     else:
-        lo = hi = int(name)
-    if name.endswith('%'):
+        lo = hi = name
+    if lo.endswith('%') or hi.endswith('%'):
         case = 'beta'
+    lo, hi = map(lambda z: float(z.replace(',', '').strip('%')), (lo, hi))
     coalesce = lambda z, d: z if z is not None else d
     los.append(lo)
     his.append(hi)
